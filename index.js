@@ -254,6 +254,11 @@ const handleClientConnection = (clientWs) => {
 
           case "session.updated":
             console.log("Session updated:", message);
+            await ws.send(
+              JSON.stringify({
+                type: "response.create",
+              })
+            );
             break;
 
           case "response.audio.delta":

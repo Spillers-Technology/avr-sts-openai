@@ -1,6 +1,6 @@
 {
   "name": "avr-sts-openai",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "author": "Agent Voice Response <info@agentvoiceresponse.com>",
   "description": "OpenAI Speech-to-Speech service for Agent Voice Response",
   "main": "index.js",
@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@alexanderolsen/libsamplerate-js": "^2.1.2",
-    "axios": "^1.11.0",
-    "dotenv": "^17.2.1",
+    "axios": "^1.12.2",
+    "dotenv": "^17.2.3",
     "ws": "^8.18.3"
   },
   "devDependencies": {
