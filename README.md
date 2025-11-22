@@ -108,6 +108,7 @@ You can customize the application behavior using the following environment varia
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
 - `PORT`: The port on which the server will listen (default: 6030)
 - `OPENAI_MODEL`: The OpenAI model to use (default: gpt-4o-realtime-preview)
+- `OPENAI_VOICE`: Specifies the voice to use for speech synthesis (default: alloy)
 - `OPENAI_INSTRUCTIONS`: Custom instructions for the AI (optional)
 - `OPENAI_URL_INSTRUCTIONS`: URL to fetch instructions from a web service (optional)
 - `OPENAI_FILE_INSTRUCTIONS`: Path to a local file containing instructions (optional)

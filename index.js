@@ -29,6 +29,7 @@ require("dotenv").config();
  */
 const connectToOpenAI = () => {
   const model = process.env.OPENAI_MODEL || "gpt-4o-realtime-preview";
+  console.log("Connecting to OpenAI with model:", model);
   return new WebSocket(`wss://api.openai.com/v1/realtime?model=${model}`, {
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -179,6 +180,7 @@ const handleClientConnection = (clientWs) => {
             "You are a helpful assistant that can answer questions and help with tasks.",
           temperature: +process.env.OPENAI_TEMPERATURE || 0.8,
           max_response_output_tokens: +process.env.OPENAI_MAX_TOKENS || "inf",
+          voice: process.env.OPENAI_VOICE || "alloy", // default voice is alloy
         },
       };
 
