@@ -184,6 +184,10 @@ const handleClientConnection = (clientWs) => {
         },
       };
 
+      if (process.env.OPENAI_LANGUAGE) {
+        obj.session.input_audio_transcription.language = process.env.OPENAI_LANGUAGE;
+      }
+
       if (process.env.OPENAI_INSTRUCTIONS) {
         console.log("Using OPENAI_INSTRUCTIONS from environment variable");
         obj.session.instructions = process.env.OPENAI_INSTRUCTIONS;

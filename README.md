@@ -46,6 +46,9 @@ OPENAI_INSTRUCTIONS="You are a helpful assistant that can answer questions and h
 
 OPENAI_TEMPERATURE=0.8  # Optional, controls randomness (0.0-1.0), defaults to 0.8
 OPENAI_MAX_TOKENS=100  # Optional, controls response length, defaults to "inf"
+
+OPENAI_VOICE=alloy # Optional, specifies the voice to use for speech synthesis
+OPENAI_LANGUAGE=en # Optional, specifies the language to use for speech recognition (default: auto-detected)
 ```
 
 Replace `your_openai_api_key` with your actual OpenAI API key.
@@ -109,6 +112,7 @@ You can customize the application behavior using the following environment varia
 - `PORT`: The port on which the server will listen (default: 6030)
 - `OPENAI_MODEL`: The OpenAI model to use (default: gpt-4o-realtime-preview)
 - `OPENAI_VOICE`: Specifies the voice to use for speech synthesis (default: alloy)
+- `OPENAI_LANGUAGE`: Specifies the language to use for speech recognition (optional). If not provided, language is auto-detected.
 - `OPENAI_INSTRUCTIONS`: Custom instructions for the AI (optional)
 - `OPENAI_URL_INSTRUCTIONS`: URL to fetch instructions from a web service (optional)
 - `OPENAI_FILE_INSTRUCTIONS`: Path to a local file containing instructions (optional)

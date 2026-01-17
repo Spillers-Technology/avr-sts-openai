@@ -5,7 +5,7 @@ const axios = require("axios");
 
 module.exports = {
   name: "avr_transfer",
-  description: "Transfers a call to a specific extension.",
+  description: "Transfers the call to a designated internal extension when the user requests to speak with an internal operator or be redirected to another extension. Optional context and priority information may be included to support proper call handling and routing.",
   input_schema: {
     type: "object",
     properties: {

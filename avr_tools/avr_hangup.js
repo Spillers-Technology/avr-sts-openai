@@ -5,7 +5,7 @@ const axios = require("axios");
 module.exports = {
   name: "avr_hangup",
   description:
-    "Ends the conversation once the maintenance is booked or if no availability is found.",
+    "Ends the call when the customer has no further information to request, after all relevant actions have been completed, or when the customer explicitly says goodbye, ensuring a clean and graceful termination of the interaction.",
   input_schema: {
     type: "object",
     properties: {},
