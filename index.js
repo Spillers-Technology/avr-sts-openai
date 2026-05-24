@@ -80,14 +80,23 @@ const resolveTemperature = () => {
 };
 
 const applyGenerationOptions = (session, model) => {
-  session.max_response_output_tokens = resolveMaxOutputTokens();
-
   if (isReasoningRealtimeModel(model)) {
     session.reasoning = { effort: resolveReasoningEffort() };
     return;
   }
 
   session.temperature = resolveTemperature();
+};
+
+const buildResponseCreate = (overrides = {}) => {
+  const response = { ...overrides };
+  const maxTokens = resolveMaxOutputTokens();
+  if (maxTokens !== "inf") {
+    response.max_output_tokens = maxTokens;
+  }
+  return Object.keys(response).length
+    ? { type: "response.create", response }
+    : { type: "response.create" };
 };
 
 /**
@@ -342,11 +351,7 @@ const handleClientConnection = (clientWs) => {
 
           case "session.updated":
             console.log("Session updated:", message);
-            await ws.send(
-              JSON.stringify({
-                type: "response.create",
-              })
-            );
+            await ws.send(JSON.stringify(buildResponseCreate()));
             break;
 
           case "response.output_audio.delta":
@@ -381,12 +386,9 @@ const handleClientConnection = (clientWs) => {
               );
               console.log("Tool response:", content);
               ws.send(
-                JSON.stringify({
-                  type: "response.create",
-                  response: {
-                    instructions: content,
-                  },
-                })
+                JSON.stringify(
+                  buildResponseCreate({ instructions: content })
+                )
               );
             } catch (error) {
               const errMsg = `Tool ${message.name} failed: ${error.message}`;

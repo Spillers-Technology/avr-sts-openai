@@ -122,7 +122,7 @@ You can customize the application behavior using the following environment varia
 - `OPENAI_MODEL`: The OpenAI Realtime model to use (default: gpt-realtime-2)
 - `OPENAI_REASONING_EFFORT`: Reasoning effort for `gpt-realtime-2` models (`minimal`, `low`, `medium`, `high`, `xhigh`; default: `low`). Ignored for other models.
 - `OPENAI_TEMPERATURE`: Sampling temperature for `gpt-realtime` / `gpt-realtime-mini` only (0.6–1.2; default: 0.8). Not supported on `gpt-realtime-2`.
-- `OPENAI_MAX_TOKENS`: Max output tokens per response (`max_response_output_tokens`; default: `inf`)
+- `OPENAI_MAX_TOKENS`: Max output tokens per response via `response.create` (`max_output_tokens`; default: `inf`)
 - `OPENAI_TRANSCRIPTION_MODEL`: Model used for input audio transcription (default: whisper-1)
 - `OPENAI_TURN_DETECTION`: Voice activity detection — `server_vad` (default) or `semantic_vad`
 - `OPENAI_TURN_DETECTION_EAGERNESS`: Optional eagerness when using `semantic_vad` (`low`, `medium`, `high`, `auto`)
