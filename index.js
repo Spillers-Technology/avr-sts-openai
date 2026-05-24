@@ -23,6 +23,8 @@ const { loadTools, getToolHandler } = require("./loadTools");
 require("dotenv").config();
 
 const DEFAULT_MODEL = "gpt-realtime-2";
+const REALTIME_PCM_RATE = 24000;
+const REALTIME_PCM_FORMAT = { type: "audio/pcm", rate: REALTIME_PCM_RATE };
 const DEPRECATED_MODELS = new Set([
   "gpt-4o-realtime-preview",
   "gpt-4o-mini-realtime-preview",
@@ -258,14 +260,14 @@ const handleClientConnection = (clientWs) => {
           "You are a helpful assistant that can answer questions and help with tasks.",
         audio: {
           input: {
-            format: { type: "audio/pcm", rate: 24000 },
+            format: REALTIME_PCM_FORMAT,
             turn_detection: buildTurnDetection(),
             transcription: {
               model: process.env.OPENAI_TRANSCRIPTION_MODEL || "whisper-1",
             },
           },
           output: {
-            format: { type: "audio/pcm" },
+            format: REALTIME_PCM_FORMAT,
             voice: process.env.OPENAI_VOICE || "alloy",
           },
         },
