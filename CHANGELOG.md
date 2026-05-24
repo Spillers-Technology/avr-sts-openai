@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-05-24
+
+### Fixed
+
+- Do not send `session.temperature` for `gpt-realtime-2` (reasoning models use `reasoning.effort` instead).
+- Use `max_response_output_tokens` instead of `max_output_tokens` in `session.update`.
+- Apply `OPENAI_TEMPERATURE` only to non-reasoning realtime models (`gpt-realtime`, `gpt-realtime-mini`).
+
 ## [1.11.0] - 2026-05-24
 
 ### Added

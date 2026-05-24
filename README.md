@@ -120,7 +120,9 @@ You can customize the application behavior using the following environment varia
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
 - `PORT`: The port on which the server will listen (default: 6030)
 - `OPENAI_MODEL`: The OpenAI Realtime model to use (default: gpt-realtime-2)
-- `OPENAI_REASONING_EFFORT`: Reasoning effort for gpt-realtime-2 models (`low`, `medium`, `high`; default: `low`)
+- `OPENAI_REASONING_EFFORT`: Reasoning effort for `gpt-realtime-2` models (`minimal`, `low`, `medium`, `high`, `xhigh`; default: `low`). Ignored for other models.
+- `OPENAI_TEMPERATURE`: Sampling temperature for `gpt-realtime` / `gpt-realtime-mini` only (0.6–1.2; default: 0.8). Not supported on `gpt-realtime-2`.
+- `OPENAI_MAX_TOKENS`: Max output tokens per response (`max_response_output_tokens`; default: `inf`)
 - `OPENAI_TRANSCRIPTION_MODEL`: Model used for input audio transcription (default: whisper-1)
 - `OPENAI_TURN_DETECTION`: Voice activity detection — `server_vad` (default) or `semantic_vad`
 - `OPENAI_TURN_DETECTION_EAGERNESS`: Optional eagerness when using `semantic_vad` (`low`, `medium`, `high`, `auto`)
@@ -129,8 +131,6 @@ You can customize the application behavior using the following environment varia
 - `OPENAI_INSTRUCTIONS`: Custom instructions for the AI (optional)
 - `OPENAI_URL_INSTRUCTIONS`: URL to fetch instructions from a web service (optional)
 - `OPENAI_FILE_INSTRUCTIONS`: Path to a local file containing instructions (optional)
-- `OPENAI_TEMPERATURE`: Controls randomness in responses (0.0-1.0, default: 0.8)
-- `OPENAI_MAX_TOKENS`: Controls the maximum length of the response (default: "inf")
 
 ### Instruction Loading Methods
 

@@ -27,7 +27,14 @@ const DEPRECATED_MODELS = new Set([
   "gpt-4o-realtime-preview",
   "gpt-4o-mini-realtime-preview",
 ]);
-const REASONING_EFFORTS = new Set(["low", "medium", "high"]);
+const REASONING_EFFORTS = new Set([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+const isReasoningRealtimeModel = (model) => model.startsWith("gpt-realtime-2");
 
 const resolveModel = () => process.env.OPENAI_MODEL || DEFAULT_MODEL;
 
@@ -55,6 +62,32 @@ const buildTurnDetection = () => {
 const resolveReasoningEffort = () => {
   const effort = (process.env.OPENAI_REASONING_EFFORT || "low").toLowerCase();
   return REASONING_EFFORTS.has(effort) ? effort : "low";
+};
+
+const resolveMaxOutputTokens = () => {
+  const raw = process.env.OPENAI_MAX_TOKENS;
+  if (!raw || raw === "inf") return "inf";
+  const n = +raw;
+  return Number.isFinite(n) && n > 0 ? n : "inf";
+};
+
+const resolveTemperature = () => {
+  const raw = process.env.OPENAI_TEMPERATURE;
+  if (raw === undefined || raw === "") return 0.8;
+  const temp = +raw;
+  if (!Number.isFinite(temp)) return 0.8;
+  return Math.min(1.2, Math.max(0.6, temp));
+};
+
+const applyGenerationOptions = (session, model) => {
+  session.max_response_output_tokens = resolveMaxOutputTokens();
+
+  if (isReasoningRealtimeModel(model)) {
+    session.reasoning = { effort: resolveReasoningEffort() };
+    return;
+  }
+
+  session.temperature = resolveTemperature();
 };
 
 /**
@@ -214,8 +247,6 @@ const handleClientConnection = (clientWs) => {
         output_modalities: ["audio"],
         instructions:
           "You are a helpful assistant that can answer questions and help with tasks.",
-        temperature: +process.env.OPENAI_TEMPERATURE || 0.8,
-        max_output_tokens: +process.env.OPENAI_MAX_TOKENS || "inf",
         audio: {
           input: {
             format: { type: "audio/pcm", rate: 24000 },
@@ -235,9 +266,7 @@ const handleClientConnection = (clientWs) => {
         session.audio.input.transcription.language = process.env.OPENAI_LANGUAGE;
       }
 
-      if (model.startsWith("gpt-realtime-2")) {
-        session.reasoning = { effort: resolveReasoningEffort() };
-      }
+      applyGenerationOptions(session, model);
 
       const obj = { type: "session.update", session };
 
