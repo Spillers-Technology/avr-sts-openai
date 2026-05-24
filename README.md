@@ -37,7 +37,7 @@ Create a `.env` file in the root of the project to store your API keys and confi
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 PORT=6030
-OPENAI_MODEL=gpt-4o-realtime-preview  # Optional, defaults to gpt-4o-realtime-preview
+OPENAI_MODEL=gpt-realtime-2  # Optional, defaults to gpt-realtime-2
 
 # Choose one of the following instruction loading methods:
 OPENAI_INSTRUCTIONS="You are a helpful assistant that can answer questions and help with tasks."  # Method 1: Direct variable
@@ -102,6 +102,15 @@ This endpoint accepts an audio stream and returns a streamed audio response gene
 - Format: 16-bit PCM at 8kHz
 - Streamed audio data in real-time
 
+## Upgrading from `gpt-4o-realtime-preview`
+
+This connector now targets the **GA Realtime API** (no `OpenAI-Beta` header). Breaking changes:
+
+- Default model is `gpt-realtime-2`. Set `OPENAI_MODEL` explicitly if you need `gpt-realtime` or `gpt-realtime-mini`.
+- `gpt-4o-realtime-preview` and other beta preview models are **rejected** at session init with a clear error.
+- Session schema uses GA fields (`session.audio`, `output_modalities`, `max_output_tokens`).
+- Turn detection defaults to `server_vad` (previous releases did not set VAD; OpenAI GA default is `server_vad`). Set `OPENAI_TURN_DETECTION=semantic_vad` to opt into semantic VAD.
+
 ## Customizing the Application
 
 ### Environment Variables
@@ -110,7 +119,11 @@ You can customize the application behavior using the following environment varia
 
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
 - `PORT`: The port on which the server will listen (default: 6030)
-- `OPENAI_MODEL`: The OpenAI model to use (default: gpt-4o-realtime-preview)
+- `OPENAI_MODEL`: The OpenAI Realtime model to use (default: gpt-realtime-2)
+- `OPENAI_REASONING_EFFORT`: Reasoning effort for gpt-realtime-2 models (`low`, `medium`, `high`; default: `low`)
+- `OPENAI_TRANSCRIPTION_MODEL`: Model used for input audio transcription (default: whisper-1)
+- `OPENAI_TURN_DETECTION`: Voice activity detection — `server_vad` (default) or `semantic_vad`
+- `OPENAI_TURN_DETECTION_EAGERNESS`: Optional eagerness when using `semantic_vad` (`low`, `medium`, `high`, `auto`)
 - `OPENAI_VOICE`: Specifies the voice to use for speech synthesis (default: alloy)
 - `OPENAI_LANGUAGE`: Specifies the language to use for speech recognition (optional). If not provided, language is auto-detected.
 - `OPENAI_INSTRUCTIONS`: Custom instructions for the AI (optional)
