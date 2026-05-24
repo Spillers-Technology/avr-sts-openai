@@ -22,18 +22,96 @@ const { loadTools, getToolHandler } = require("./loadTools");
 
 require("dotenv").config();
 
+const DEFAULT_MODEL = "gpt-realtime-2";
+const REALTIME_PCM_RATE = 24000;
+const REALTIME_PCM_FORMAT = { type: "audio/pcm", rate: REALTIME_PCM_RATE };
+const DEPRECATED_MODELS = new Set([
+  "gpt-4o-realtime-preview",
+  "gpt-4o-mini-realtime-preview",
+]);
+const REASONING_EFFORTS = new Set([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+const isReasoningRealtimeModel = (model) => model.startsWith("gpt-realtime-2");
+
+const resolveModel = () => process.env.OPENAI_MODEL || DEFAULT_MODEL;
+
+const validateModel = (model) => {
+  if (DEPRECATED_MODELS.has(model)) {
+    return `OPENAI_MODEL=${model} is no longer supported. Use gpt-realtime-2 (default), gpt-realtime, or gpt-realtime-mini with the GA Realtime API.`;
+  }
+  if (!model.startsWith("gpt-realtime")) {
+    return `OPENAI_MODEL=${model} is not a supported GA Realtime model. Use gpt-realtime-2, gpt-realtime, or gpt-realtime-mini.`;
+  }
+  return null;
+};
+
+const buildTurnDetection = () => {
+  const type = (process.env.OPENAI_TURN_DETECTION || "server_vad").toLowerCase();
+  if (type === "semantic_vad") {
+    const turnDetection = { type: "semantic_vad" };
+    const eagerness = process.env.OPENAI_TURN_DETECTION_EAGERNESS;
+    if (eagerness) turnDetection.eagerness = eagerness;
+    return turnDetection;
+  }
+  return { type: "server_vad" };
+};
+
+const resolveReasoningEffort = () => {
+  const effort = (process.env.OPENAI_REASONING_EFFORT || "low").toLowerCase();
+  return REASONING_EFFORTS.has(effort) ? effort : "low";
+};
+
+const resolveMaxOutputTokens = () => {
+  const raw = process.env.OPENAI_MAX_TOKENS;
+  if (!raw || raw === "inf") return "inf";
+  const n = +raw;
+  return Number.isFinite(n) && n > 0 ? n : "inf";
+};
+
+const resolveTemperature = () => {
+  const raw = process.env.OPENAI_TEMPERATURE;
+  if (raw === undefined || raw === "") return 0.8;
+  const temp = +raw;
+  if (!Number.isFinite(temp)) return 0.8;
+  return Math.min(1.2, Math.max(0.6, temp));
+};
+
+const applyGenerationOptions = (session, model) => {
+  if (isReasoningRealtimeModel(model)) {
+    session.reasoning = { effort: resolveReasoningEffort() };
+    return;
+  }
+
+  session.temperature = resolveTemperature();
+};
+
+const buildResponseCreate = (overrides = {}) => {
+  const response = { ...overrides };
+  const maxTokens = resolveMaxOutputTokens();
+  if (maxTokens !== "inf") {
+    response.max_output_tokens = maxTokens;
+  }
+  return Object.keys(response).length
+    ? { type: "response.create", response }
+    : { type: "response.create" };
+};
+
 /**
  * Creates and configures a WebSocket connection to OpenAI's real-time API.
  *
  * @returns {WebSocket} Configured WebSocket instance
  */
 const connectToOpenAI = () => {
-  const model = process.env.OPENAI_MODEL || "gpt-4o-realtime-preview";
+  const model = resolveModel();
   console.log("Connecting to OpenAI with model:", model);
   return new WebSocket(`wss://api.openai.com/v1/realtime?model=${model}`, {
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "OpenAI-Beta": "realtime=v1",
     },
   });
 };
@@ -161,32 +239,47 @@ const handleClientConnection = (clientWs) => {
 
   // Initialize OpenAI WebSocket connection
   const initializeOpenAIConnection = () => {
+    const model = resolveModel();
+    const modelError = validateModel(model);
+    if (modelError) {
+      console.error(modelError);
+      clientWs.send(JSON.stringify({ type: "error", message: modelError }));
+      return;
+    }
+
     ws = connectToOpenAI();
 
     // Configure WebSocket event handlers
     ws.on("open", async () => {
       console.log("WebSocket connected to OpenAI");
 
-      // Initialize session with audio format specifications
-      const obj = {
-        type: "session.update",
-        session: {
-          input_audio_format: "pcm16",
-          input_audio_transcription: {
-            model: "whisper-1",
+      const session = {
+        type: "realtime",
+        output_modalities: ["audio"],
+        instructions:
+          "You are a helpful assistant that can answer questions and help with tasks.",
+        audio: {
+          input: {
+            format: REALTIME_PCM_FORMAT,
+            turn_detection: buildTurnDetection(),
+            transcription: {
+              model: process.env.OPENAI_TRANSCRIPTION_MODEL || "whisper-1",
+            },
           },
-          output_audio_format: "pcm16",
-          instructions:
-            "You are a helpful assistant that can answer questions and help with tasks.",
-          temperature: +process.env.OPENAI_TEMPERATURE || 0.8,
-          max_response_output_tokens: +process.env.OPENAI_MAX_TOKENS || "inf",
-          voice: process.env.OPENAI_VOICE || "alloy", // default voice is alloy
+          output: {
+            format: REALTIME_PCM_FORMAT,
+            voice: process.env.OPENAI_VOICE || "alloy",
+          },
         },
       };
 
       if (process.env.OPENAI_LANGUAGE) {
-        obj.session.input_audio_transcription.language = process.env.OPENAI_LANGUAGE;
+        session.audio.input.transcription.language = process.env.OPENAI_LANGUAGE;
       }
+
+      applyGenerationOptions(session, model);
+
+      const obj = { type: "session.update", session };
 
       if (process.env.OPENAI_INSTRUCTIONS) {
         console.log("Using OPENAI_INSTRUCTIONS from environment variable");
@@ -260,17 +353,13 @@ const handleClientConnection = (clientWs) => {
 
           case "session.updated":
             console.log("Session updated:", message);
-            await ws.send(
-              JSON.stringify({
-                type: "response.create",
-              })
-            );
+            await ws.send(JSON.stringify(buildResponseCreate()));
             break;
 
+          case "response.output_audio.delta":
           case "response.audio.delta":
             const audioChunk = Buffer.from(message.delta, "base64");
             const audioFrames = processOpenAIAudioChunk(audioChunk);
-            // Send audio frames to client
             audioFrames.forEach((frame) => {
               clientWs.send(
                 JSON.stringify({
@@ -286,32 +375,31 @@ const handleClientConnection = (clientWs) => {
             // Get the appropriate handler for the tool
             const handler = getToolHandler(message.name);
             if (!handler) {
-              console.error(`No handler found for tool: ${message.name}`);
+              const errMsg = `No handler found for tool: ${message.name}`;
+              console.error(errMsg);
+              clientWs.send(JSON.stringify({ type: "error", message: errMsg }));
               return;
             }
 
             try {
-              // Execute the tool handler with the provided arguments
               const content = await handler(
                 sessionUuid,
                 JSON.parse(message.arguments)
               );
               console.log("Tool response:", content);
               ws.send(
-                JSON.stringify({
-                  type: "response.create",
-                  response: {
-                    instructions: content,
-                  },
-                })
+                JSON.stringify(
+                  buildResponseCreate({ instructions: content })
+                )
               );
             } catch (error) {
-              // Handle errors during tool execution
-              console.error(`Error executing tool ${message.name}:`, error);
-              return;
+              const errMsg = `Tool ${message.name} failed: ${error.message}`;
+              console.error(errMsg, error);
+              clientWs.send(JSON.stringify({ type: "error", message: errMsg }));
             }
             break;
 
+          case "response.output_audio_transcript.done":
           case "response.audio_transcript.done":
             const agentData = {
               type: "transcript",
