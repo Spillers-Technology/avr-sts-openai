@@ -1,0 +1,44 @@
+name: Bootstrap avr-sts-xai Docker publish
+on:
+  workflow_dispatch:
+jobs:
+  publish:
+    name: publish avr-sts-xai and sync repo secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: agentvoiceresponse/avr-sts-xai
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: verify connector
+        run: |
+          npm ci
+          node --check index.js
+          node --check loadTools.js
+      - name: login to docker hub
+        env:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: docker login -u "$username" -p "$password"
+      - name: get-npm-version
+        id: package-version
+        uses: martinbeentjes/npm-get-version-action@v1.3.1
+      - name: build and push docker image
+        run: |
+          docker build \
+            -t agentvoiceresponse/avr-sts-xai:latest \
+            -t agentvoiceresponse/avr-sts-xai:${{ steps.package-version.outputs.current-version }} \
+            .
+          docker push agentvoiceresponse/avr-sts-xai:latest
+          docker push agentvoiceresponse/avr-sts-xai:${{ steps.package-version.outputs.current-version }}
+      - name: sync docker hub secrets to avr-sts-xai
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh secret set DOCKERHUB_USERNAME --repo agentvoiceresponse/avr-sts-xai --body "$DOCKERHUB_USERNAME"
+          gh secret set DOCKERHUB_PASSWORD --repo agentvoiceresponse/avr-sts-xai --body "$DOCKERHUB_PASSWORD"
