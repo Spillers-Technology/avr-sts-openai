@@ -35,27 +35,51 @@ jobs:
           docker push agentvoiceresponse/avr-sts-xai:latest
           docker push agentvoiceresponse/avr-sts-xai:${{ steps.package-version.outputs.current-version }}
       - name: sync docker hub secrets to avr-sts-xai
-        uses: actions/github-script@v7
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
-        with:
-          script: |
-            const sodium = require('tweetsodium');
-            const owner = 'agentvoiceresponse';
-            const repo = 'avr-sts-xai';
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pip install --quiet pynacl requests
+          python3 <<'PY'
+          import base64
+          import os
 
-            async function setRepoSecret(name, value) {
-              const { data: key } = await github.rest.actions.getRepoPublicKey({ owner, repo });
-              const encrypted = sodium(Buffer.from(value), Buffer.from(key.key, 'base64'));
-              await github.rest.actions.createOrUpdateRepoSecret({
-                owner,
-                repo,
-                secret_name: name,
-                encrypted_value: Buffer.from(encrypted).toString('base64'),
-                key_id: key.key_id,
-              });
-            }
+          import requests
+          from nacl import encoding, public
 
-            await setRepoSecret('DOCKERHUB_USERNAME', process.env.DOCKERHUB_USERNAME);
-            await setRepoSecret('DOCKERHUB_PASSWORD', process.env.DOCKERHUB_PASSWORD);
+          token = os.environ["GH_TOKEN"]
+          owner, repo = "agentvoiceresponse", "avr-sts-xai"
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+          }
+
+          def encrypt_secret(public_key: str, secret_value: str) -> str:
+              public_key_obj = public.PublicKey(
+                  public_key.encode("utf-8"), encoding.Base64Encoder()
+              )
+              sealed_box = public.SealedBox(public_key_obj)
+              encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
+              return base64.b64encode(encrypted).decode("utf-8")
+
+          def set_secret(name: str, value: str) -> None:
+              response = requests.get(
+                  f"https://api.github.com/repos/{owner}/{repo}/actions/secrets/public-key",
+                  headers=headers,
+                  timeout=30,
+              )
+              response.raise_for_status()
+              key = response.json()
+              encrypted = encrypt_secret(key["key"], value)
+              response = requests.put(
+                  f"https://api.github.com/repos/{owner}/{repo}/actions/secrets/{name}",
+                  headers=headers,
+                  json={"encrypted_value": encrypted, "key_id": key["key_id"]},
+                  timeout=30,
+              )
+              response.raise_for_status()
+
+          set_secret("DOCKERHUB_USERNAME", os.environ["DOCKERHUB_USERNAME"])
+          set_secret("DOCKERHUB_PASSWORD", os.environ["DOCKERHUB_PASSWORD"])
+          PY
