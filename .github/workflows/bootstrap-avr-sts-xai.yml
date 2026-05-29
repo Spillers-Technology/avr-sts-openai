@@ -34,52 +34,21 @@ jobs:
             .
           docker push agentvoiceresponse/avr-sts-xai:latest
           docker push agentvoiceresponse/avr-sts-xai:${{ steps.package-version.outputs.current-version }}
-      - name: sync docker hub secrets to avr-sts-xai
+      - name: dispatch docker hub secret import to avr-sts-xai
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
           GH_TOKEN: ${{ secrets.GH_ADMIN_PAT }}
         run: |
-          pip install --quiet pynacl requests
-          python3 <<'PY'
-          import base64
-          import os
-
-          import requests
-          from nacl import encoding, public
-
-          token = os.environ["GH_TOKEN"]
-          owner, repo = "agentvoiceresponse", "avr-sts-xai"
-          headers = {
-              "Authorization": f"Bearer {token}",
-              "Accept": "application/vnd.github+json",
-          }
-
-          def encrypt_secret(public_key: str, secret_value: str) -> str:
-              public_key_obj = public.PublicKey(
-                  public_key.encode("utf-8"), encoding.Base64Encoder()
-              )
-              sealed_box = public.SealedBox(public_key_obj)
-              encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
-              return base64.b64encode(encrypted).decode("utf-8")
-
-          def set_secret(name: str, value: str) -> None:
-              response = requests.get(
-                  f"https://api.github.com/repos/{owner}/{repo}/actions/secrets/public-key",
-                  headers=headers,
-                  timeout=30,
-              )
-              response.raise_for_status()
-              key = response.json()
-              encrypted = encrypt_secret(key["key"], value)
-              response = requests.put(
-                  f"https://api.github.com/repos/{owner}/{repo}/actions/secrets/{name}",
-                  headers=headers,
-                  json={"encrypted_value": encrypted, "key_id": key["key_id"]},
-                  timeout=30,
-              )
-              response.raise_for_status()
-
-          set_secret("DOCKERHUB_USERNAME", os.environ["DOCKERHUB_USERNAME"])
-          set_secret("DOCKERHUB_PASSWORD", os.environ["DOCKERHUB_PASSWORD"])
-          PY
+          payload=$(python3 -c 'import json,os; print(json.dumps({
+            "event_type": "import-docker-secrets",
+            "client_payload": {
+              "username": os.environ["DOCKERHUB_USERNAME"],
+              "password": os.environ["DOCKERHUB_PASSWORD"],
+            },
+          }))')
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/agentvoiceresponse/avr-sts-xai/dispatches" \
+            -d "$payload"
