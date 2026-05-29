@@ -38,7 +38,7 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_ADMIN_PAT }}
         run: |
           pip install --quiet pynacl requests
           python3 <<'PY'
