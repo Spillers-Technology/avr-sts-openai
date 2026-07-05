@@ -1,26 +1,57 @@
-name: Build Docker Image
+name: Build and Publish Image
+
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/spillers-technology/avr-sts-openai
+
 jobs:
-    build:
-      name: push docker image to docker hub
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v2
-        - name: login to docker hub
-          id: docker-hub
-          env:
-            username: ${{secrets.DOCKERHUB_USERNAME}}
-            password: ${{secrets.DOCKERHUB_PASSWORD}}
-          run: docker login -u $username -p $password 
-        - name: get-npm-version
-          id: package-version
-          uses: martinbeentjes/npm-get-version-action@v1.3.1
-        - name: build the docker image
-          id: build-docker-image
-          run: docker build -t agentvoiceresponse/avr-sts-openai:latest -t agentvoiceresponse/avr-sts-openai:${{ steps.package-version.outputs.current-version}} .
-        - name: push the docker image
-          id: push-docker-image
-          run: docker push agentvoiceresponse/avr-sts-openai:latest && docker push agentvoiceresponse/avr-sts-openai:${{ steps.package-version.outputs.current-version}}
+  build:
+    name: Build and push GHCR image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read package version
+        id: package-version
+        run: |
+          node -p '"version=" + require("./package.json").version' >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.package-version.outputs.version }}
+            type=sha,prefix=sha-
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
