@@ -101,6 +101,103 @@ const buildResponseCreate = (overrides = {}) => {
     : { type: "response.create" };
 };
 
+const isEnabled = (value, defaultValue = true) => {
+  if (value === undefined || value === "") return defaultValue;
+  return !["0", "false", "no", "off"].includes(String(value).toLowerCase());
+};
+
+const redactSensitive = (value) => JSON.parse(JSON.stringify(value, (key, item) => {
+  const normalized = key.toLowerCase();
+  if (
+    normalized.includes("authorization") ||
+    normalized.includes("api_key") ||
+    normalized.includes("token") ||
+    normalized.includes("password") ||
+    normalized.includes("secret")
+  ) {
+    return "[redacted]";
+  }
+  return item;
+}));
+
+const anchordeskApiBase = () => {
+  const base = process.env.ANCHORDESK_API_URL || process.env.ANCHORDESK_URL;
+  return base ? base.replace(/\/$/, "") : null;
+};
+
+const anchordeskToken = () => process.env.ANCHORDESK_PAT || process.env.MCP_AUTHORIZATION;
+
+const anchordeskTimeoutMs = () => {
+  const raw = +process.env.ANCHORDESK_TIMEOUT_MS;
+  return Number.isFinite(raw) && raw > 0 ? raw : 8000;
+};
+
+const anchordeskRequest = async (method, path, data) => {
+  const base = anchordeskApiBase();
+  const token = anchordeskToken();
+  if (!base || !token) {
+    throw new Error("ANCHORDESK_API_URL and AnchorDesk token are not configured");
+  }
+
+  const response = await axios({
+    method,
+    url: `${base}${path}`,
+    data,
+    timeout: anchordeskTimeoutMs(),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  return response.data;
+};
+
+const truncate = (text, max = 500) => {
+  if (!text) return text;
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+};
+
+const hasUrgentLanguage = (transcript) => transcript.some(({ text }) =>
+  /\b(urgent|high priority|priority 1|emergency|asap|immediately)\b/i.test(text || "")
+);
+
+const hasCreateTicketToolSignal = (message) => {
+  if (!message || typeof message !== "object") return false;
+  if (typeof message.type === "string" && message.type.startsWith("mcp_list_tools")) {
+    return false;
+  }
+
+  const candidates = [
+    message.name,
+    message.tool_name,
+    message.item?.name,
+    message.item?.tool_name,
+    message.item?.function?.name,
+    message.output?.name,
+    message.tool_call?.name,
+    message.call?.name,
+  ];
+  if (candidates.some((name) => name === "create_ticket")) return true;
+
+  if (
+    typeof message.type === "string" &&
+    (message.type.includes("mcp") ||
+      message.type.includes("tool") ||
+      message.type.includes("function"))
+  ) {
+    return JSON.stringify(message).includes("create_ticket");
+  }
+
+  return false;
+};
+
+const appendCallContext = (instructions, sessionUuid) => {
+  if (!sessionUuid) return instructions;
+  return `${instructions}
+
+CALL CONTEXT: This call session UUID is ${sessionUuid}. Include this UUID in any AnchorDesk ticket description so automated fallback checks can avoid duplicate tickets.`;
+};
+
 /**
  * Creates and configures a WebSocket connection to OpenAI's real-time API.
  *
@@ -148,6 +245,11 @@ const initializeResamplers = async () => {
 const handleClientConnection = (clientWs) => {
   console.log("New client WebSocket connection received");
   let sessionUuid = null;
+  const connectedAt = new Date();
+  const transcript = [];
+  let ticketCreateObserved = false;
+  let cleanupStarted = false;
+  let fallbackTicketStarted = false;
 
   let audioBuffer8k = [];
   let ws = null;
@@ -323,6 +425,11 @@ const handleClientConnection = (clientWs) => {
           "You are a helpful assistant that can answer questions and help with tasks.";
       }
 
+      obj.session.instructions = appendCallContext(
+        obj.session.instructions,
+        sessionUuid
+      );
+
       // Load available tools for OpenAI
       try {
         obj.session.tools = loadTools();
@@ -331,7 +438,7 @@ const handleClientConnection = (clientWs) => {
         console.error(`Error loading tools for OpenAI: ${error.message}`);
       }
 
-      console.log(obj.session);
+      console.log(redactSensitive(obj.session));
 
       ws.send(JSON.stringify(obj));
     });
@@ -339,6 +446,10 @@ const handleClientConnection = (clientWs) => {
     ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data);
+        if (hasCreateTicketToolSignal(message)) {
+          ticketCreateObserved = true;
+          console.log("Create-ticket tool activity observed");
+        }
 
         switch (message.type) {
           case "error":
@@ -352,7 +463,7 @@ const handleClientConnection = (clientWs) => {
             break;
 
           case "session.updated":
-            console.log("Session updated:", message);
+            console.log("Session updated:", redactSensitive(message));
             await ws.send(JSON.stringify(buildResponseCreate()));
             break;
 
@@ -406,6 +517,11 @@ const handleClientConnection = (clientWs) => {
               role: "agent",
               text: message.transcript,
             };
+            transcript.push({
+              role: "agent",
+              text: message.transcript,
+              at: new Date().toISOString(),
+            });
             clientWs.send(JSON.stringify(agentData));
             console.log("Agent transcript:", agentData);
             break;
@@ -421,6 +537,11 @@ const handleClientConnection = (clientWs) => {
               role: "user",
               text: message.transcript,
             };
+            transcript.push({
+              role: "user",
+              text: message.transcript,
+              at: new Date().toISOString(),
+            });
             clientWs.send(JSON.stringify(userData));
             console.log("User transcript:", userData);
             break;
@@ -436,32 +557,111 @@ const handleClientConnection = (clientWs) => {
 
     ws.on("close", () => {
       console.log("OpenAI WebSocket connection closed");
-      cleanup();
+      cleanup("openai_close");
     });
 
     ws.on("error", (err) => {
       console.error("OpenAI WebSocket error:", err);
-      cleanup();
+      cleanup("openai_error");
     });
   };
 
   // Handle client WebSocket close
   clientWs.on("close", () => {
     console.log("Client WebSocket connection closed");
-    cleanup();
+    cleanup("client_close");
   });
 
   clientWs.on("error", (err) => {
     console.error("Client WebSocket error:", err);
-    cleanup();
+    cleanup("client_error");
   });
+
+  async function maybeCreateFallbackTicket(reason) {
+    if (
+      fallbackTicketStarted ||
+      ticketCreateObserved ||
+      !sessionUuid ||
+      !isEnabled(process.env.ANCHORDESK_FALLBACK_TICKETS, true)
+    ) {
+      return;
+    }
+
+    const base = anchordeskApiBase();
+    const token = anchordeskToken();
+    if (!base || !token) return;
+
+    fallbackTicketStarted = true;
+    const endedAt = new Date();
+    const durationSeconds = Math.max(0, Math.round((endedAt - connectedAt) / 1000));
+    const transcriptText = transcript.length
+      ? transcript.map((entry) => `[${entry.role}] ${entry.text}`).join("\n")
+      : "No completed transcript was captured before the call ended.";
+    const lastUserText = [...transcript].reverse().find((entry) => entry.role === "user")?.text;
+    const priority = hasUrgentLanguage(transcript) ? "1" : "3";
+
+    try {
+      const existing = await anchordeskRequest(
+        "get",
+        `/tickets/search?q=${encodeURIComponent(sessionUuid)}&limit=1`
+      );
+      if (Array.isArray(existing) && existing.length > 0) {
+        ticketCreateObserved = true;
+        console.log(`AnchorDesk ticket already exists for session ${sessionUuid}`);
+        return;
+      }
+
+      const ticket = await anchordeskRequest("post", "/tickets", {
+        title: "avr follow up",
+        summary: truncate(
+          lastUserText
+            ? `AVR call follow-up: ${lastUserText}`
+            : "AVR call ended before caller details were captured.",
+          500
+        ),
+        description: [
+          "Automatically created by AVR fallback because no create-ticket tool call was observed before disconnect.",
+          "",
+          `Session UUID: ${sessionUuid}`,
+          `Started: ${connectedAt.toISOString()}`,
+          `Ended: ${endedAt.toISOString()}`,
+          `Duration: ${durationSeconds} seconds`,
+          `Cleanup reason: ${reason}`,
+          "",
+          "Transcript:",
+          transcriptText,
+        ].join("\n"),
+        status: "Open",
+        priority,
+        source: "local",
+        externalProvider: "avr",
+        externalId: sessionUuid,
+      });
+      ticketCreateObserved = true;
+      console.log(
+        `Created AnchorDesk fallback ticket ${ticket.ticketNumber || ticket.id} for AVR session ${sessionUuid}`
+      );
+    } catch (error) {
+      const status = error.response?.status;
+      const body = error.response?.data;
+      console.error(
+        `Failed to create AnchorDesk fallback ticket for session ${sessionUuid}: ${status || ""} ${error.message}`,
+        body || ""
+      );
+    }
+  }
 
   /**
    * Cleans up resources and closes connections.
    */
-  function cleanup() {
-    if (ws) ws.close();
-    if (clientWs) clientWs.close();
+  function cleanup(reason) {
+    if (cleanupStarted) return;
+    cleanupStarted = true;
+    maybeCreateFallbackTicket(reason).catch((error) => {
+      console.error("AnchorDesk fallback ticket cleanup failed:", error);
+    });
+    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+    if (clientWs && clientWs.readyState === WebSocket.OPEN) clientWs.close();
   }
 };
 

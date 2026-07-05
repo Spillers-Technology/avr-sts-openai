@@ -49,6 +49,11 @@ OPENAI_MAX_TOKENS=100  # Optional, controls response length, defaults to "inf"
 
 OPENAI_VOICE=alloy # Optional, specifies the voice to use for speech synthesis
 OPENAI_LANGUAGE=en # Optional, specifies the language to use for speech recognition (default: auto-detected)
+
+# Optional AnchorDesk fallback ticket creation on disconnect
+ANCHORDESK_API_URL=http://backend.materialticket.svc.cluster.local:8060
+ANCHORDESK_PAT=your_anchordesk_pat
+ANCHORDESK_FALLBACK_TICKETS=true
 ```
 
 Replace `your_openai_api_key` with your actual OpenAI API key.
@@ -131,6 +136,10 @@ You can customize the application behavior using the following environment varia
 - `OPENAI_INSTRUCTIONS`: Custom instructions for the AI (optional)
 - `OPENAI_URL_INSTRUCTIONS`: URL to fetch instructions from a web service (optional)
 - `OPENAI_FILE_INSTRUCTIONS`: Path to a local file containing instructions (optional)
+- `ANCHORDESK_API_URL`: AnchorDesk REST API base URL used for fallback ticket creation on disconnect (optional)
+- `ANCHORDESK_PAT`: AnchorDesk personal access token for fallback ticket creation. If omitted, `MCP_AUTHORIZATION` is reused (optional)
+- `ANCHORDESK_FALLBACK_TICKETS`: Create an `avr follow up` ticket on disconnect when no create-ticket tool call was observed (default: `true`)
+- `ANCHORDESK_TIMEOUT_MS`: HTTP timeout for AnchorDesk fallback calls (default: `8000`)
 
 ### Instruction Loading Methods
 
