@@ -34,6 +34,21 @@ function loadTools() {
     ...loadToolsFromDir(toolsDir)      // Custom tools
   ];
 
+  // Optionally attach a remote MCP server. OpenAI Realtime connects to it and
+  // executes these tool calls server-side, so no local handler is required.
+  // Env-driven so the same image serves any MCP endpoint.
+  if (process.env.MCP_SERVER_URL) {
+    const mcpTool = {
+      type: 'mcp',
+      server_label: process.env.MCP_SERVER_LABEL || 'mcp',
+      server_url: process.env.MCP_SERVER_URL,
+      require_approval: 'never',
+    };
+    if (process.env.MCP_AUTHORIZATION) mcpTool.authorization = process.env.MCP_AUTHORIZATION;
+    allTools.push(mcpTool);
+    console.log(`Attached remote MCP server "${mcpTool.server_label}" at ${mcpTool.server_url}`);
+  }
+
   // Warning if no tools found
   if (allTools.length === 0) {
     console.warn(`No tools found in ${avrToolsDir} or ${toolsDir}`);
