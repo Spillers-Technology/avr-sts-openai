@@ -21,6 +21,10 @@ module.exports = {
   handler: async (uuid, { briefing }) => {
     const amiUrl = (process.env.AMI_URL || "http://127.0.0.1:6006").replace(/\/$/, "");
 
+    // Record the attempt up front (even if TTS fails) — the fallback re-entry
+    // uses this to recognize a returning caller and skip the fresh greeting.
+    setBriefing(uuid, null, briefing);
+
     // Generate the spoken briefing Joey hears before accepting. Failure is
     // non-fatal — the transfer still happens, Joey just gets the beep prompt.
     try {
@@ -38,7 +42,7 @@ module.exports = {
           timeout: 15000,
         }
       );
-      setBriefing(uuid, Buffer.from(tts.data));
+      setBriefing(uuid, Buffer.from(tts.data), briefing);
       console.log(`Warm-transfer briefing ready for ${uuid} (${tts.data.byteLength} bytes)`);
     } catch (error) {
       console.error("Briefing TTS failed (transferring anyway):", error.message);

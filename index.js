@@ -20,7 +20,7 @@ const axios = require("axios");
 const fs = require("fs").promises;
 const { create } = require("@alexanderolsen/libsamplerate-js");
 const { loadTools, getToolHandler } = require("./loadTools");
-const { getBriefing } = require("./briefings");
+const { getBriefing, getBriefingInfo } = require("./briefings");
 
 require("dotenv").config();
 
@@ -438,6 +438,18 @@ const handleClientConnection = (clientWs) => {
         obj.session.instructions,
         sessionUuid
       );
+
+      // Fallback re-entry after a failed warm transfer keeps the original
+      // call UUID, so a briefing on file means this caller was already
+      // greeted and Joey was already tried.
+      const priorAttempt = getBriefingInfo(sessionUuid);
+      if (priorAttempt) {
+        console.log("Returning caller after failed warm transfer:", sessionUuid);
+        ticketCreateObserved = true; // first session (or its fallback) owns the ticket
+        obj.session.instructions += `
+
+RETURNING CALLER: You already know this caller — you just tried Joey for them and he could not pick up. Your briefing was: "${priorAttempt.text}". Do NOT repeat the standard greeting. Open by apologizing that he couldn't break away, confirm their message will get to him, and log the failed attempt as an update on this call's ticket (it contains this session UUID) — or note it when creating one if none exists. If they have nothing to add, wrap up warmly and end the call with avr_hangup.`;
+      }
 
       // Load available tools for OpenAI
       try {
