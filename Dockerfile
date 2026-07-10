@@ -20,7 +20,11 @@ COPY --chown=node:node avr_tools/avr_transfer.js avr_tools/avr_transfer.js
 
 COPY --chown=node:node avr_tools/avr_hangup.js avr_tools/avr_hangup.js
 
+COPY --chown=node:node avr_tools/avr_warm_transfer.js avr_tools/avr_warm_transfer.js
+
 COPY --chown=node:node loadTools.js loadTools.js
+
+COPY --chown=node:node briefings.js briefings.js
 
 COPY --chown=node:node index.js index.js
 

@@ -14,15 +14,24 @@
  * @see https://www.agentvoiceresponse.com
  */
 
+const http = require("http");
 const WebSocket = require("ws");
 const axios = require("axios");
 const fs = require("fs").promises;
 const { create } = require("@alexanderolsen/libsamplerate-js");
 const { loadTools, getToolHandler } = require("./loadTools");
+const { getBriefing } = require("./briefings");
 
 require("dotenv").config();
 
 const DEFAULT_MODEL = "gpt-realtime-2";
+
+// Call-control tools tear the audio path down the moment they execute. Delay
+// them so the agent's parting words finish playing out through Asterisk first
+// (fixes hangups cutting off the goodbye mid-sentence).
+const CALL_CONTROL_TOOLS = new Set(["avr_hangup", "avr_transfer", "avr_warm_transfer"]);
+const CALL_CONTROL_GRACE_MS = parseInt(process.env.AVR_CALL_CONTROL_GRACE_MS || "3000", 10);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const REALTIME_PCM_RATE = 24000;
 const REALTIME_PCM_FORMAT = { type: "audio/pcm", rate: REALTIME_PCM_RATE };
 const DEPRECATED_MODELS = new Set([
@@ -493,16 +502,28 @@ const handleClientConnection = (clientWs) => {
             }
 
             try {
+              const isCallControl = CALL_CONTROL_TOOLS.has(message.name);
+              if (isCallControl) {
+                console.log(
+                  `Delaying ${message.name} ${CALL_CONTROL_GRACE_MS}ms so parting words finish playing`
+                );
+                await sleep(CALL_CONTROL_GRACE_MS);
+              }
               const content = await handler(
                 sessionUuid,
                 JSON.parse(message.arguments)
               );
               console.log("Tool response:", content);
-              ws.send(
-                JSON.stringify(
-                  buildResponseCreate({ instructions: content })
-                )
-              );
+              // Call-control success ends the session — prompting the model to
+              // respond again would talk into a dead channel. Errors still go
+              // back so the agent can recover out loud.
+              if (!isCallControl || /^error/i.test(String(content))) {
+                ws.send(
+                  JSON.stringify(
+                    buildResponseCreate({ instructions: content })
+                  )
+                );
+              }
             } catch (error) {
               const errMsg = `Tool ${message.name} failed: ${error.message}`;
               console.error(errMsg, error);
@@ -699,18 +720,44 @@ const startServer = async () => {
   try {
     await initializeResamplers();
 
-    // Create WebSocket server
+    // HTTP + WebSocket on one port. HTTP serves warm-transfer briefing audio
+    // to the Asterisk dialplan (GET /brief/<uuid>.wav); WebSocket carries the
+    // avr-core audio bridge as before.
     const PORT = process.env.PORT || 6030;
-    const wss = new WebSocket.Server({ port: PORT });
+    const server = http.createServer((req, res) => {
+      const briefMatch =
+        req.method === "GET" &&
+        req.url.match(/^\/brief\/([0-9a-fA-F-]{36})\.wav$/);
+      if (briefMatch) {
+        const audio = getBriefing(briefMatch[1]);
+        if (audio) {
+          res.writeHead(200, {
+            "Content-Type": "audio/wav",
+            "Content-Length": audio.length,
+          });
+          res.end(audio);
+        } else {
+          res.writeHead(404);
+          res.end("no briefing for that uuid");
+        }
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const wss = new WebSocket.Server({ server });
 
     wss.on("connection", (clientWs) => {
       console.log("New client connected");
       handleClientConnection(clientWs);
     });
 
-    console.log(
-      `OpenAI Speech-to-Speech WebSocket server running on port ${PORT}`
-    );
+    server.listen(PORT, () => {
+      console.log(
+        `OpenAI Speech-to-Speech WebSocket server running on port ${PORT}`
+      );
+    });
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
