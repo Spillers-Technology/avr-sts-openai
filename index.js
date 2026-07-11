@@ -22,6 +22,7 @@ const { create } = require("@alexanderolsen/libsamplerate-js");
 const { loadTools, getToolHandler } = require("./loadTools");
 const { getBriefing, getBriefingInfo } = require("./briefings");
 const { setCallInfo, getCallInfo } = require("./callinfo");
+const { typingFrame } = require("./sfx");
 
 require("dotenv").config();
 
@@ -32,6 +33,17 @@ const DEFAULT_MODEL = "gpt-realtime-2";
 // (fixes hangups cutting off the goodbye mid-sentence).
 const CALL_CONTROL_TOOLS = new Set(["avr_hangup", "avr_transfer", "avr_warm_transfer"]);
 const CALL_CONTROL_GRACE_MS = parseInt(process.env.AVR_CALL_CONTROL_GRACE_MS || "3000", 10);
+// Soft typing loop streamed to the caller while a server-side MCP call runs,
+// so the wait reads as "she's writing it down" instead of dead air. Set
+// AVR_TOOL_SFX=off to disable. The start delay skips the effect entirely for
+// near-instant tool calls.
+const TOOL_SFX_ENABLED = (process.env.AVR_TOOL_SFX || "typing").toLowerCase() !== "off";
+const TOOL_SFX_START_DELAY_MS = 400;
+// The Realtime API usually auto-generates a follow-up response after a
+// server-side MCP call completes, but sometimes it just stops — leaving the
+// caller in silence until they speak again. If no new response starts within
+// this window after a tool-call response finishes, prod the model.
+const MCP_NUDGE_MS = parseInt(process.env.AVR_MCP_NUDGE_MS || "1500", 10);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const REALTIME_PCM_RATE = 24000;
 const REALTIME_PCM_FORMAT = { type: "audio/pcm", rate: REALTIME_PCM_RATE };
@@ -282,6 +294,58 @@ const handleClientConnection = (clientWs) => {
   let audioBuffer8k = [];
   let ws = null;
 
+  // Tool-wait sound effect + stalled-response nudge state
+  let sfxDelayTimer = null;
+  let sfxInterval = null;
+  let sfxFrameIndex = 0;
+  let nudgeTimer = null;
+  let mcpCallInResponse = false;
+
+  // Streams the typing loop to the caller one 20ms frame at a time — real-time
+  // pacing keeps avr-core's playback buffer near-empty, so when the agent's
+  // voice resumes it isn't queued behind seconds of sound effect.
+  const startToolSfx = () => {
+    if (!TOOL_SFX_ENABLED || sfxDelayTimer || sfxInterval) return;
+    sfxDelayTimer = setTimeout(() => {
+      sfxDelayTimer = null;
+      sfxInterval = setInterval(() => {
+        if (clientWs.readyState !== WebSocket.OPEN) {
+          stopToolSfx();
+          return;
+        }
+        clientWs.send(
+          JSON.stringify({
+            type: "audio",
+            audio: typingFrame(sfxFrameIndex++).toString("base64"),
+          })
+        );
+      }, 20);
+    }, TOOL_SFX_START_DELAY_MS);
+  };
+
+  const stopToolSfx = () => {
+    if (sfxDelayTimer) clearTimeout(sfxDelayTimer);
+    if (sfxInterval) clearInterval(sfxInterval);
+    sfxDelayTimer = null;
+    sfxInterval = null;
+  };
+
+  const scheduleMcpNudge = () => {
+    if (nudgeTimer) return;
+    nudgeTimer = setTimeout(() => {
+      nudgeTimer = null;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log("No follow-up response after MCP call — nudging model");
+        ws.send(JSON.stringify(buildResponseCreate()));
+      }
+    }, MCP_NUDGE_MS);
+  };
+
+  const cancelMcpNudge = () => {
+    if (nudgeTimer) clearTimeout(nudgeTimer);
+    nudgeTimer = null;
+  };
+
   /**
    * Processes OpenAI audio chunks by downsampling and extracting frames.
    * Converts 24kHz audio to 8kHz and extracts 20ms frames (160 samples).
@@ -516,6 +580,10 @@ GREETING: Open this call by saying exactly: "${greeting}" — nothing more until
 
           case "response.output_audio.delta":
           case "response.audio.delta":
+            // The voice is back — stop covering the wait and stand down any
+            // pending nudge (the model followed up on its own).
+            stopToolSfx();
+            cancelMcpNudge();
             const audioChunk = Buffer.from(message.delta, "base64");
             const audioFrames = processOpenAIAudioChunk(audioChunk);
             audioFrames.forEach((frame) => {
@@ -587,7 +655,39 @@ GREETING: Open this call by saying exactly: "${greeting}" — nothing more until
 
           case "input_audio_buffer.speech_started":
             console.log("Audio streaming started");
+            // The caller is talking: kill the typing loop and any pending
+            // nudge — their turn will trigger a response by itself.
+            stopToolSfx();
+            cancelMcpNudge();
             clientWs.send(JSON.stringify({ type: "interruption" }));
+            break;
+
+          case "response.created":
+            // A response is starting on its own — no nudge needed.
+            cancelMcpNudge();
+            break;
+
+          case "response.mcp_call_arguments.delta":
+            // Server-side tool call underway — cover the wait with typing.
+            // (Not logged: these arrive in bursts of dozens per call.)
+            startToolSfx();
+            break;
+
+          case "response.mcp_call.in_progress":
+          case "response.mcp_call.completed":
+          case "response.mcp_call.failed":
+            // Typing keeps running until the voice actually resumes; mark the
+            // response so response.done can schedule the stall nudge.
+            startToolSfx();
+            mcpCallInResponse = true;
+            console.log("Received message type:", message.type);
+            break;
+
+          case "response.done":
+            if (mcpCallInResponse) {
+              mcpCallInResponse = false;
+              scheduleMcpNudge();
+            }
             break;
 
           case "conversation.item.input_audio_transcription.completed":
@@ -716,6 +816,8 @@ GREETING: Open this call by saying exactly: "${greeting}" — nothing more until
   function cleanup(reason) {
     if (cleanupStarted) return;
     cleanupStarted = true;
+    stopToolSfx();
+    cancelMcpNudge();
     maybeCreateFallbackTicket(reason).catch((error) => {
       console.error("AnchorDesk fallback ticket cleanup failed:", error);
     });

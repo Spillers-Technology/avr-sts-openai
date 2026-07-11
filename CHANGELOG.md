@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-07-11
+
+### Added
+
+- Tool-wait sound effect: a synthesized soft keyboard-typing loop streams to
+  the caller while a server-side MCP call runs (starts after 400ms so instant
+  calls stay silent; stops the moment the voice resumes or the caller
+  speaks). `AVR_TOOL_SFX=off` disables.
+
+### Fixed
+
+- Dead air after MCP calls: if no follow-up response starts within
+  `AVR_MCP_NUDGE_MS` (default 1500) of a tool-call response finishing, a
+  `response.create` nudge prods the model to speak instead of waiting for
+  the caller to break the silence.
+
 ## [1.13.0] - 2026-07-10
 
 ### Added
