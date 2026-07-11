@@ -1,20 +1,22 @@
 {
   "name": "avr-sts-openai",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "author": "Agent Voice Response <info@agentvoiceresponse.com>",
   "description": "OpenAI Speech-to-Speech service for Agent Voice Response",
   "main": "index.js",
   "scripts": {
     "start": "node .",
     "start:dev": "nodemon --inspect ./index.js",
+    "auth:contacts": "node scripts/google-contacts-auth.js",
+    "test": "node --test",
     "dc:build": "docker build --platform=linux/amd64 -t agentvoiceresponse/avr-sts-openai:latest -t agentvoiceresponse/avr-sts-openai:${npm_package_version} .",
     "dc:push": "docker push agentvoiceresponse/avr-sts-openai:latest && docker push agentvoiceresponse/avr-sts-openai:${npm_package_version}"
   },
   "dependencies": {
     "@alexanderolsen/libsamplerate-js": "^2.1.2",
-    "axios": "^1.13.2",
+    "axios": "^1.18.1",
     "dotenv": "^17.2.3",
-    "ws": "^8.19.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

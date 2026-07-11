@@ -140,6 +140,28 @@ You can customize the application behavior using the following environment varia
 - `ANCHORDESK_PAT`: AnchorDesk personal access token for fallback ticket creation. If omitted, `MCP_AUTHORIZATION` is reused (optional)
 - `ANCHORDESK_FALLBACK_TICKETS`: Create an `avr follow up` ticket on disconnect when no create-ticket tool call was observed (default: `true`)
 - `ANCHORDESK_TIMEOUT_MS`: HTTP timeout for AnchorDesk fallback calls (default: `8000`)
+- `GOOGLE_CONTACTS_CLIENT_ID`: OAuth client ID for optional read-only Google Contacts caller enrichment
+- `GOOGLE_CONTACTS_CLIENT_SECRET`: OAuth client secret paired with the Contacts client ID
+- `GOOGLE_CONTACTS_REFRESH_TOKEN`: Offline OAuth token granted only the `contacts.readonly` scope
+- `GOOGLE_CONTACTS_DEFAULT_COUNTRY_CODE`: Country code added to local 10-digit numbers (default: `1`)
+- `GOOGLE_CONTACTS_SYNC_INTERVAL_MS`: Incremental Contacts refresh interval (default: `3600000`)
+
+When all three Google OAuth values are configured, the service builds an
+in-memory phone-number index from the People API. Matching contact names,
+organizations, titles, and groups are added to the model's private call context;
+email addresses are retained for future Gmail correlation but are not exposed to
+the model. Caller ID remains explicitly untrusted and is never authentication.
+
+Create a Google OAuth Desktop client with the People API enabled, then obtain
+the offline read-only refresh token locally:
+
+```bash
+GOOGLE_CONTACTS_CLIENT_ID=... GOOGLE_CONTACTS_CLIENT_SECRET=... npm run auth:contacts
+```
+
+Open the printed URL, approve access, and store the three printed values in a
+secret manager. The helper requests only
+`https://www.googleapis.com/auth/contacts.readonly`.
 
 ### Instruction Loading Methods
 

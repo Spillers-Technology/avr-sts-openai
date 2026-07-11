@@ -23,8 +23,11 @@ const { loadTools, getToolHandler } = require("./loadTools");
 const { getBriefing, getBriefingInfo } = require("./briefings");
 const { setCallInfo, getCallInfo } = require("./callinfo");
 const { typingFrame } = require("./sfx");
+const { GoogleContactsDirectory } = require("./contacts");
 
 require("dotenv").config();
+
+const contactsDirectory = new GoogleContactsDirectory();
 
 const DEFAULT_MODEL = "gpt-realtime-2";
 
@@ -236,6 +239,14 @@ const appendCallContext = (instructions, sessionUuid) => {
   return `${instructions}
 
 CALL CONTEXT: This call session UUID is ${sessionUuid}. Include this UUID in any AnchorDesk ticket description so automated fallback checks can avoid duplicate tickets.`;
+};
+
+const appendContactContext = (instructions, sessionUuid) => {
+  const caller = getCallInfo(sessionUuid)?.caller;
+  const context = contactsDirectory.callerContext(caller);
+  if (!context) return instructions;
+  console.log(`Matched inbound caller ID to Google Contacts for ${sessionUuid}`);
+  return `${instructions}\n\n${context}`;
 };
 
 /**
@@ -518,6 +529,10 @@ const handleClientConnection = (clientWs) => {
       }
 
       obj.session.instructions = appendCallContext(
+        obj.session.instructions,
+        sessionUuid
+      );
+      obj.session.instructions = appendContactContext(
         obj.session.instructions,
         sessionUuid
       );
@@ -831,6 +846,7 @@ GREETING: Open this call by saying exactly: "${greeting}" — nothing more until
  */
 const cleanupGlobalResources = () => {
   console.log("Cleaning up global resources...");
+  contactsDirectory.stop();
   if (globalDownsampler) {
     globalDownsampler.destroy();
     globalDownsampler = null;
@@ -859,6 +875,7 @@ process.on("SIGTERM", () => {
 const startServer = async () => {
   try {
     await initializeResamplers();
+    await contactsDirectory.start();
 
     // HTTP + WebSocket on one port. HTTP serves warm-transfer briefing audio
     // to the Asterisk dialplan (GET /brief/<uuid>.wav); WebSocket carries the

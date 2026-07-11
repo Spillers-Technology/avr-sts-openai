@@ -22,6 +22,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Test
+        run: |
+          npm ci
+          npm test
+
       - name: Read package version
         id: package-version
         run: |

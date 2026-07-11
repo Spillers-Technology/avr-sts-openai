@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-07-11
+
+### Added
+
+- Optional read-only Google Contacts synchronization through the People API.
+  Incoming caller IDs are normalized and matched to names, organizations,
+  titles, and contact groups for private model context. Caller ID remains
+  explicitly untrusted, and email addresses are never exposed to the model.
+- Local loopback OAuth helper for granting only `contacts.readonly` access.
+
 ## [1.14.0] - 2026-07-11
 
 ### Added
