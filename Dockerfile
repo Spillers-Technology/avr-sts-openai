@@ -26,6 +26,8 @@ COPY --chown=node:node loadTools.js loadTools.js
 
 COPY --chown=node:node briefings.js briefings.js
 
+COPY --chown=node:node callinfo.js callinfo.js
+
 COPY --chown=node:node index.js index.js
 
 USER node
