@@ -21,6 +21,7 @@ const fs = require("fs").promises;
 const { create } = require("@alexanderolsen/libsamplerate-js");
 const { loadTools, getToolHandler } = require("./loadTools");
 const { getBriefing, getBriefingInfo } = require("./briefings");
+const { setCallInfo, getCallInfo } = require("./callinfo");
 
 require("dotenv").config();
 
@@ -198,6 +199,24 @@ const hasCreateTicketToolSignal = (message) => {
   }
 
   return false;
+};
+
+// Pick the greeting for how this call reached us: the dialplan reports
+// "forward" (diverted from another number) or "direct" (DID dialed straight)
+// via POST /callinfo/<uuid>. No entry — or no matching env — means no
+// injection, so deployments without AVR_GREETING_* keep their old behavior.
+const resolveGreeting = (sessionUuid) => {
+  const info = getCallInfo(sessionUuid);
+  const path = info && info.path === "forward" ? "forward" : "direct";
+  const greeting =
+    path === "forward"
+      ? process.env.AVR_GREETING_FORWARD
+      : process.env.AVR_GREETING_DIRECT;
+  if (!greeting) return null;
+  console.log(
+    `Call path for ${sessionUuid}: ${path}${info ? "" : " (no callinfo on file, defaulted)"}${info && info.caller ? `, caller ${info.caller}` : ""}`
+  );
+  return greeting;
 };
 
 const appendCallContext = (instructions, sessionUuid) => {
@@ -449,6 +468,13 @@ const handleClientConnection = (clientWs) => {
         obj.session.instructions += `
 
 RETURNING CALLER: You already know this caller — you just tried Joey for them and he could not pick up. Your briefing was: "${priorAttempt.text}". Do NOT repeat the standard greeting. Open by apologizing that he couldn't break away, confirm their message will get to him, and log the failed attempt as an update on this call's ticket (it contains this session UUID) — or note it when creating one if none exists. If they have nothing to add, wrap up warmly and end the call with avr_hangup.`;
+      } else {
+        const greeting = resolveGreeting(sessionUuid);
+        if (greeting) {
+          obj.session.instructions += `
+
+GREETING: Open this call by saying exactly: "${greeting}" — nothing more until the caller speaks.`;
+        }
       }
 
       // Load available tools for OpenAI
@@ -752,6 +778,29 @@ const startServer = async () => {
           res.writeHead(404);
           res.end("no briefing for that uuid");
         }
+        return;
+      }
+      // The dialplan reports how the call reached the DID before it enters
+      // AudioSocket, so the entry is always on file by session setup.
+      const callInfoMatch =
+        req.method === "POST" &&
+        req.url.match(/^\/callinfo\/([0-9a-fA-F-]{36})$/);
+      if (callInfoMatch) {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
+        req.on("end", () => {
+          const params = new URLSearchParams(body);
+          const info = {
+            path: params.get("path") === "forward" ? "forward" : "direct",
+            caller: params.get("caller") || null,
+          };
+          setCallInfo(callInfoMatch[1], info);
+          console.log(`Call info for ${callInfoMatch[1]}:`, info);
+          res.writeHead(204);
+          res.end();
+        });
         return;
       }
       res.writeHead(404);
