@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-07-11
+
+### Fixed
+
+- Keep the post-MCP watchdog armed until actual agent audio or caller speech,
+  so a follow-up response that starts but emits no audio cannot silently stall
+  the call. The watchdog retries `response.create` up to three times with
+  exponential backoff and logs `response.created` / `response.done` events.
+- Cap continuous typing audio at 45 seconds so an exhausted recovery path
+  degrades to silence instead of playing the effect until channel timeout.
+
 ## [1.15.0] - 2026-07-11
 
 ### Added

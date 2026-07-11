@@ -140,6 +140,10 @@ You can customize the application behavior using the following environment varia
 - `ANCHORDESK_PAT`: AnchorDesk personal access token for fallback ticket creation. If omitted, `MCP_AUTHORIZATION` is reused (optional)
 - `ANCHORDESK_FALLBACK_TICKETS`: Create an `avr follow up` ticket on disconnect when no create-ticket tool call was observed (default: `true`)
 - `ANCHORDESK_TIMEOUT_MS`: HTTP timeout for AnchorDesk fallback calls (default: `8000`)
+- `AVR_TOOL_SFX`: Set to `off` to disable typing audio during MCP tool waits (default: `typing`)
+- `AVR_TOOL_SFX_MAX_MS`: Maximum continuous typing audio before degrading to silence (default: `45000`)
+- `AVR_MCP_NUDGE_MS`: Initial delay before nudging a post-MCP response that has emitted no audio (default: `1500`)
+- `AVR_MCP_NUDGE_MAX_ATTEMPTS`: Maximum watchdog nudges, using exponential backoff (default: `3`)
 - `GOOGLE_CONTACTS_CLIENT_ID`: OAuth client ID for optional read-only Google Contacts caller enrichment
 - `GOOGLE_CONTACTS_CLIENT_SECRET`: OAuth client secret paired with the Contacts client ID
 - `GOOGLE_CONTACTS_REFRESH_TOKEN`: Offline OAuth token granted only the `contacts.readonly` scope

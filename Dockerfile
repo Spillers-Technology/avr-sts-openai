@@ -32,6 +32,8 @@ COPY --chown=node:node contacts.js contacts.js
 
 COPY --chown=node:node sfx.js sfx.js
 
+COPY --chown=node:node mcp-watchdog.js mcp-watchdog.js
+
 COPY --chown=node:node index.js index.js
 
 USER node
