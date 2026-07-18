@@ -45,8 +45,18 @@ function loadTools() {
       require_approval: 'never',
     };
     if (process.env.MCP_AUTHORIZATION) mcpTool.authorization = process.env.MCP_AUTHORIZATION;
+    // Defence in depth: MCP_ALLOWED_TOOLS (comma-separated) filters the remote
+    // catalogue before the model ever sees it. The real authorization boundary
+    // is the server-side credential scope; this limits accidental and
+    // prompt-injection reach on top of it.
+    if (process.env.MCP_ALLOWED_TOOLS) {
+      mcpTool.allowed_tools = process.env.MCP_ALLOWED_TOOLS.split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+    }
     allTools.push(mcpTool);
-    console.log(`Attached remote MCP server "${mcpTool.server_label}" at ${mcpTool.server_url}`);
+    const allowed = mcpTool.allowed_tools ? ` (allowed_tools: ${mcpTool.allowed_tools.join(', ')})` : '';
+    console.log(`Attached remote MCP server "${mcpTool.server_label}" at ${mcpTool.server_url}${allowed}`);
   }
 
   // Warning if no tools found
