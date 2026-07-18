@@ -786,6 +786,9 @@ GREETING: Open this call by saying exactly: "${greeting}" — nothing more until
     const lastUserText = [...transcript].reverse().find((entry) => entry.role === "user")?.text;
     const priority = hasUrgentLanguage(transcript) ? "1" : "3";
 
+    // Best-effort duplicate check. Intake-scoped tokens are denied search
+    // (403) by design — fall through to the POST, which the server dedupes
+    // on (externalProvider, externalId) and answers with the existing ticket.
     try {
       const existing = await anchordeskRequest(
         "get",
@@ -796,7 +799,14 @@ GREETING: Open this call by saying exactly: "${greeting}" — nothing more until
         console.log(`AnchorDesk ticket already exists for session ${sessionUuid}`);
         return;
       }
+    } catch (error) {
+      const status = error.response?.status;
+      console.warn(
+        `AnchorDesk pre-create search unavailable (${status || error.message}); relying on server-side external-id dedupe`
+      );
+    }
 
+    try {
       const ticket = await anchordeskRequest("post", "/tickets", {
         title: "avr follow up",
         summary: truncate(
